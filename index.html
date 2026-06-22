@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="zh-TW" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, viewport-fit=cover">
+<title>派車小工具</title>
+<meta name="description" content="智慧派車單解析、車隊代號管理、訂單整合輸出、LINE 轉發、高德地圖路線里程">
+<meta name="theme-color" content="#10b981">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="派車小工具">
+<script>
+// 高德地圖安全密鑰設定（必須在 JS SDK 載入前設定）
+window._AMapSecurityConfig = {
+  securityJsCode: 'e4e73467f3d0f24ae474eaaf52e7cac2'
+};
+</script>
+<script src="https://webapi.amap.com/maps?v=2.0&key=2db7df26a80f1398deae833ffd967338&plugin=AMap.PlaceSearch,AMap.Geocoder,AMap.Driving"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box}
+:root{--bg:#0a0e14;--bg-card:#131820;--bg-input:#1a1f2a;--border:#2a3140;--fg:#e5e7eb;--muted:#6b7280;--primary:#10b981;--amber:#f59e0b;--rose:#f43f5e;--line:#06c755;--radius:12px;--radius-sm:8px}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif;font-size:14px;min-height:100vh;overflow-x:hidden;max-width:100vw}
+button,input,textarea,select{font:inherit;color:inherit}
+input,textarea,select{background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 12px;outline:none;transition:border-color .2s,box-shadow .2s;width:100%}
+input:focus,textarea:focus,select:focus{border-color:var(--primary);box-shadow:0 0 0 2px rgba(16,185,129,.25)}
+select{cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;background-size:16px;padding-right:32px}
+textarea{resize:vertical;font-family:ui-monospace,monospace}
+.app{max-width:800px;margin:0 auto;padding:16px}
+.header{position:sticky;top:0;z-index:30;background:rgba(10,14,20,.85);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);margin:-16px -16px 16px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between}
+.brand{display:flex;align-items:center;gap:10px}
+.brand-icon{width:36px;height:36px;background:var(--primary);color:var(--bg);border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:18px}
+.card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:16px;box-shadow:0 8px 32px -8px rgba(0,0,0,.5)}
+.card h2{margin:0 0 12px;font-size:16px}
+.field{margin-bottom:12px}
+.field label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.span-2{grid-column:span 2}
+@media(max-width:640px){.grid-2{grid-template-columns:1fr}.span-2{grid-column:span 1}html,body{overflow-x:hidden;max-width:100vw}*.card{max-width:100%}}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:6px;font-size:12px;border:none;cursor:pointer;white-space:nowrap;transition:opacity .2s}
+.btn-primary{background:var(--primary);color:var(--bg)}
+.btn-secondary{background:var(--bg-input);color:var(--fg);border:1px solid var(--border)}
+.btn-amber{background:rgba(245,158,11,.15);color:var(--amber);border:1px solid rgba(245,158,11,.3)}
+.btn-line{background:var(--line);color:#fff}
+.btn-danger{background:rgba(244,63,94,.15);color:var(--rose);border:1px solid rgba(244,63,94,.3)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-lg{width:100%;padding:10px;font-size:14px;justify-content:center}
+.btn-sm{padding:4px 8px;font-size:10px}
+.btn-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.fleet-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-input);color:var(--muted);cursor:pointer;font-size:12px}
+.fleet-chip.active{background:rgba(16,185,129,.15);color:var(--fg);border-color:rgba(16,185,129,.5)}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex-shrink:0}
+.tag{padding:2px 6px;border-radius:4px;font-size:10px;background:rgba(255,255,255,.05);color:var(--muted)}
+.tag-primary{background:rgba(16,185,129,.15);color:var(--primary)}
+.order-card{display:flex;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;margin-bottom:8px}
+.order-bar{width:4px;flex-shrink:0}
+.order-body{flex:1;padding:12px;min-width:0;word-break:break-all}
+.order-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+.order-line{display:flex;align-items:flex-start;gap:8px;margin-top:4px}
+.order-text{flex:1;word-break:break-all}
+.empty{text-align:center;color:var(--muted);padding:32px}
+.autocomplete-wrap{position:relative}
+.autocomplete-list{position:absolute;left:0;right:0;top:calc(100% + 4px);background:var(--bg-card);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.5);max-height:280px;overflow-y:auto;z-index:40}
+.autocomplete-item{padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px}
+.autocomplete-item:hover{background:rgba(255,255,255,.05)}
+.autocomplete-item:last-child{border-bottom:none}
+.autocomplete-item-sub{font-size:11px;color:var(--muted)}
+.hidden{display:none}
+.route-checkbox{margin-top:8px;padding:12px;border:1px solid var(--primary);background:rgba(16,185,129,.05);border-radius:8px}
+.route-checkbox label{display:flex;align-items:center;gap:8px;cursor:pointer;color:var(--primary);font-weight:500}
+.route-result{padding:4px 10px;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.25);border-radius:4px;font-size:11px;color:var(--amber);font-family:monospace}
+.spinner{display:inline-block;width:12px;height:12px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.toast-container{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:100;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+.toast{background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:10px 16px;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,.5);pointer-events:auto;max-width:360px;border-left:3px solid var(--primary)}
+.fleet-header{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:14px;flex-wrap:wrap}
+.mono{font-family:monospace}
+</style>
+</head>
+<body>
+<div class="app" id="app"></div>
+<div class="toast-container" id="toasts"></div>
+<script>
+// =========================================================================
+// 高德地圖 API 設定
+// =========================================================================
+const AMAP_KEY = '2db7df26a80f1398deae833ffd967338';
+const AMAP_SECRET = 'e4e73467f3d0f24ae474eaaf52e7cac2';
+
+// =========================================================================
+// 工具函式
+// =========================================================================
+const $ = (s,p=document)=>p.querySelector(s);
+const $$ = (s,p=document)=>[...p.querySelectorAll(s)];
+const uid = (p='id')=>`${p}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+const h = (tag,attrs={},...children)=>{
+  const el=document.createElement(tag);
+  for(const[k,v]of Object.entries(attrs)){
+    if(k==='class')el.className=v;
+    else if(k==='style'&&typeof v==='object')Object.assign(el.style,v);
+    else if(k.startsWith('on')&&typeof v==='function')el.addEventListener(k.slice(2).toLowerCase(),v);
+    else if(k==='html')el.innerHTML=v;
+    else if(v!==null&&v!==undefined&&v!==false)el.setAttribute(k,v);
+  }
+  for(const child of children.flat()){
+    if(child===null||child===undefined||child===false)continue;
+    if(typeof child==='string'){
+      if(child.trim().startsWith('<svg')){const t=document.createElement('span');t.innerHTML=child;while(t.firstChild)el.appendChild(t.firstChild)}
+      else el.appendChild(document.createTextNode(child));
+    } else el.appendChild(child);
+  }
+  return el;
+};
+function toast(title,opts={}){
+  const el=h('div',{class:`toast ${opts.variant||'success'}`},title);
+  $('#toasts').appendChild(el);
+  setTimeout(()=>{el.style.opacity='0';el.style.transition='opacity .3s';setTimeout(()=>el.remove(),300)},3000);
+}
+
+// =========================================================================
+// 地址解析器（同之前版本）
+// =========================================================================
+const PICKUP_KW=['上車地址','上車地點','上車位置','上車','上:','⬆️','⬆','pickup','pick up'];
+const DROPOFF_KW=['下車地址','下車地點','下車位置','前往地點','前往位置','目的地','下車','前往','目的','下:','⬇️','⬇','dropoff','destination'];
+const DATE_KW=['日期','date'];const TIME_KW=['時間','time'];
+const NOTES_KW=['備註','備注','note','notes','remark'];
+const PAX_KW=['人數','乘客','passenger','pax'];
+const PHONE_KW=['電話','手機','phone','mobile'];
+
+function matchKw(line,kws){const lower=line.toLowerCase();for(const kw of kws){const kwl=kw.toLowerCase();if(line.startsWith(kw)||lower.startsWith(kwl)){const next=line.slice(kwl.length,kwl.length+1);if(next===''||next===':'||next==='：'||next===' '||next==='\t')return kw}}return null}
+function stripKw(line,kws){const lower=line.toLowerCase();for(const kw of kws){const kwl=kw.toLowerCase();if(line.startsWith(kw)||lower.startsWith(kwl)){const next=line.slice(kwl.length,kwl.length+1);if(next!==''&&next!==':'&&next!=='：'&&next!==' '&&next!=='\t')continue;return line.slice(kwl.length).replace(/^[：:\s]+/,'').trim()}}return ''}
+
+// 中文數字轉阿拉伯數字
+const CN_NUM={'零':0,'一':1,'二':2,'兩':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9,'十':10,'十一':11,'十二':12,'十三':13,'十四':14,'十五':15,'十六':16,'十七':17,'十八':18,'十九':19,'二十':20,'二十一':21,'二十二':22,'二十三':23,'二十四':24,'二十五':25,'二十六':26,'二十七':27,'二十八':28,'二十九':29,'三十':30,'三十一':31,'三十二':32,'三十三':33,'三十四':34,'三十五':35,'三十六':36,'三十七':37,'三十八':38,'三十九':39,'四十':40,'四十一':41,'四十二':42,'四十三':43,'四十四':44,'四十五':45,'四十六':46,'四十七':47,'四十八':48,'四十九':49,'五十':50,'五十一':51,'五十二':52,'五十三':53,'五十四':54,'五十五':55,'五十六':56,'五十七':57,'五十八':58,'五十九':59};
+function cn2num(s){s=s.trim();if(/^\d+$/.test(s))return parseInt(s);if(CN_NUM[s]!==undefined)return CN_NUM[s];if(s.startsWith('二十')){const r=s.slice(2);return 20+(r?cn2num(r):0)}if(s.startsWith('三十')){const r=s.slice(2);return 30+(r?cn2num(r):0)}if(s.startsWith('四十')){const r=s.slice(2);return 40+(r?cn2num(r):0)}if(s.startsWith('五十')){const r=s.slice(2);return 50+(r?cn2num(r):0)}return null}
+
+function normalizeTime(v){
+  if(!v)return v;
+  const t=v.trim();
+  // 中文時間：三點二十五分、十二點半、三點半、九點十分
+  const cnTime=t.match(/^([一二三四五六七八九十兩]+)點([一二三四五六七八九十兩]+)?分?$/);
+  if(cnTime){
+    const h=cn2num(cnTime[1]);let min=0;
+    if(cnTime[2]){min=cn2num(cnTime[2])||0}else if(t.includes('半')){min=30}
+    if(h!==null&&h>=0&&h<=23&&min>=0&&min<=59){
+      const rm=Math.round(min/5)*5;const ah=rm===60?(h+1)%24:h,fm=rm===60?0:rm;
+      return`${String(ah).padStart(2,'0')}:${String(fm).padStart(2,'0')}`;
+    }
+  }
+  // 中文時間：三點半
+  const cnHalf=t.match(/^([一二三四五六七八九十兩]+)點半$/);
+  if(cnHalf){const h=cn2num(cnHalf[1]);if(h!==null&&h>=0&&h<=23)return`${String(h).padStart(2,'0')}:30`}
+  // 中文時間：三點（只有小時）
+  const cnHour=t.match(/^([一二三四五六七八九十兩]+)點$/);
+  if(cnHour){const h=cn2num(cnHour[1]);if(h!==null&&h>=0&&h<=23)return`${String(h).padStart(2,'0')}:00`}
+  // 純中文數字（如「現在」「隨時」保持原樣）
+  if(/^[\u4e00-\u9fff]+$/.test(t)&&!cnTime&&!cnHalf&&!cnHour)return v;
+  // 數字格式
+  let n=t.replace(/[/\-、，.]/g,':');
+  const m=n.match(/^(\d{1,2}):(\d{1,2})$/);
+  if(m){const h=+m[1],min=+m[2];if(h>=0&&h<=23&&min>=0&&min<=59){const rm=Math.round(min/5)*5;const ah=rm===60?(h+1)%24:h,fm=rm===60?0:rm;return`${String(ah).padStart(2,'0')}:${String(fm).padStart(2,'0')}`}}
+  let m2=n.match(/^(\d{2})(\d{2})$/);
+  if(m2){const h=+m2[1],min=+m2[2];if(h>=0&&h<=23&&min>=0&&min<=59){const rm=Math.round(min/5)*5;const ah=rm===60?(h+1)%24:h,fm=rm===60?0:rm;return`${String(ah).padStart(2,'0')}:${String(fm).padStart(2,'0')}`}}
+  let m3=n.match(/^(\d{1})(\d{2})$/);
+  if(m3){const h=+m3[1],min=+m3[2];if(h>=0&&h<=9&&min>=0&&min<=59){const rm=Math.round(min/5)*5;const ah=rm===60?(h+1)%24:h,fm=rm===60?0:rm;return`${String(ah).padStart(2,'0')}:${String(fm).padStart(2,'0')}`}}
+  return n
+}
+
+function normalizeDate(v){
+  if(!v)return v;const r=v.trim();if(!r)return v;
+  const l=r.toLowerCase();const now=new Date();
+  if(l==='today'||r==='今天')return`${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')}`;
+  if(l==='tomorrow'||r==='明天'){const t=new Date(now);t.setDate(t.getDate()+1);return`${String(t.getMonth()+1).padStart(2,'0')}/${String(t.getDate()).padStart(2,'0')}`}
+  // 中文日期：六月十九、六月十九日、六月十九號、六月九日
+  const cnDate=r.match(/^([一二三四五六七八九十\d]+)月([一二三四五六七八九十\d]+)[日號]?$/);
+  if(cnDate){const mo=cn2num(cnDate[1]);const d=cn2num(cnDate[2]);if(mo&&d&&mo>=1&&mo<=12&&d>=1&&d<=31)return`${String(mo).padStart(2,'0')}/${String(d).padStart(2,'0')}`}
+  // 數字格式
+  let m=r.match(/^\d{4}[-/.](\d{1,2})[-/.](\d{1,2})$/);
+  if(m){const mo=+m[1],d=+m[2];if(mo>=1&&mo<=12&&d>=1&&d<=31)return`${String(mo).padStart(2,'0')}/${String(d).padStart(2,'0')}`}
+  m=r.match(/^(\d{2})(\d{2})$/);
+  if(m){const mo=+m[1],d=+m[2];if(mo>=1&&mo<=12&&d>=1&&d<=31)return`${String(mo).padStart(2,'0')}/${String(d).padStart(2,'0')}`}
+  m=r.match(/^(\d{1})(\d{2})$/);
+  if(m){const mo=+m[1],d=+m[2];if(mo>=1&&mo<=9&&d>=1&&d<=31)return`${String(mo).padStart(2,'0')}/${String(d).padStart(2,'0')}`}
+  m=r.match(/^(\d{1,2})[-/.](\d{1,2})$/);
+  if(m){const mo=+m[1],d=+m[2];if(mo>=1&&mo<=12&&d>=1&&d<=31)return`${String(mo).padStart(2,'0')}/${String(d).padStart(2,'0')}`}
+  return v
+}
+
+function parseDispatch(text){
+  const r={date:'',time:'',pickupAddress:'',dropoffAddress:'',notes:'',passengers:'',phone:''};
+  if(!text?.trim())return r;
+  for(const line of text.split('\n')){
+    const l=line.trim();if(!l)continue;
+    if(matchKw(l,PICKUP_KW)&&!r.pickupAddress){r.pickupAddress=stripKw(l,PICKUP_KW);continue}
+    if(matchKw(l,DROPOFF_KW)&&!r.dropoffAddress){r.dropoffAddress=stripKw(l,DROPOFF_KW);continue}
+    if(matchKw(l,DATE_KW)&&!r.date){const v=stripKw(l,DATE_KW);if(v)r.date=normalizeDate(v);continue}
+    if(matchKw(l,TIME_KW)&&!r.time){const v=stripKw(l,TIME_KW);if(v)r.time=normalizeTime(v);continue}
+    if(matchKw(l,PAX_KW)&&!r.passengers){r.passengers=stripKw(l,PAX_KW);continue}
+    if(matchKw(l,PHONE_KW)&&!r.phone){r.phone=stripKw(l,PHONE_KW);continue}
+    if(matchKw(l,NOTES_KW)&&!r.notes){r.notes=stripKw(l,NOTES_KW);continue}
+  }
+  return r;
+}
+
+function detectFleetCode(input,codes){if(!input?.trim()||!codes.length)return null;const t=input.trim();for(const c of[...codes].sort((a,b)=>b.length-a.length)){if(t===c)return{code:c,rest:''};if(t.startsWith(c)){const next=t[c.length];if(/[\u4e00-\u9fff\s\d]/.test(next)||'!@#$%^&*()_+-=[]{}|;:,.<>?/'.includes(next))return{code:c,rest:t.slice(c.length).trim()}}}return null}
+
+// =========================================================================
+// 高德地圖 JS SDK — 地址搜尋、地理編碼、路線規劃
+// =========================================================================
+
+// 等待高德 JS SDK 載入
+function waitForAmap(){
+  return new Promise((resolve)=>{
+    if(window.AMap){resolve(window.AMap);return}
+    const timer=setInterval(()=>{if(window.AMap){clearInterval(timer);resolve(window.AMap)}},100);
+    setTimeout(()=>{clearInterval(timer);resolve(null)},10000);
+  });
+}
+
+// 高德 POI 搜尋（地址自動完成）
+let _placeSearch=null;
+async function fetchAmapSuggestions(query){
+  if(query.length<2)return[];
+  try{
+    const AMap=await waitForAmap();
+    if(!AMap)return[];
+    if(!_placeSearch)_placeSearch=new AMap.PlaceSearch({city:'',citylimit:false,pageSize:10,extensions:'all'});
+    return new Promise((resolve)=>{
+      _placeSearch.search(query,(status,result)=>{
+        if(status!=='complete'||!result.poiList||!result.poiList.pois){resolve([]);return}
+        resolve(result.poiList.pois.map(poi=>{
+          const parts=[];
+          if(poi.pname)parts.push(poi.pname);
+          if(poi.adname&&poi.adname!==poi.pname)parts.push(poi.adname);
+          if(poi.address)parts.push(poi.address);
+          const formatted=parts.join('');
+          const hasName=!!poi.name;
+          const displayName=hasName?`${poi.name} — ${formatted}`:formatted;
+          return{label:displayName,formatted:hasName?`${poi.name} ${formatted}`:formatted,name:poi.name||'',lat:poi.location?poi.location.getLat():'',lon:poi.location?poi.location.getLng():'',hasHouseNumber:/號/.test(poi.address||'')};
+        }));
+      });
+    });
+  }catch(e){console.error('高德搜尋失敗:',e);return[]}
+}
+
+// 高德地理編碼（地址→座標）
+let _geocoder=null;
+async function geocodeAmap(address){
+  if(!address?.trim())return null;
+  try{
+    const AMap=await waitForAmap();
+    if(!AMap)return null;
+    if(!_geocoder)_geocoder=new AMap.Geocoder({city:''});
+    return new Promise((resolve)=>{
+      _geocoder.getLocation(address,(status,result)=>{
+        if(status==='complete'&&result.geocodes&&result.geocodes[0]){
+          resolve({lat:result.geocodes[0].location.getLat(),lon:result.geocodes[0].location.getLng()});
+        }else{resolve(null)}
+      });
+    });
+  }catch(e){}
+  // Fallback: Nominatim
+  try{
+    const res=await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(address)}`,{headers:{'Accept-Language':'zh-TW'}});
+    const data=await res.json();
+    if(data?.[0])return{lat:parseFloat(data[0].lat),lon:parseFloat(data[0].lon)};
+  }catch(e){}
+  // Fallback: Photon
+  try{
+    const res=await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(address)}&limit=1`);
+    const data=await res.json();
+    if(data?.features?.[0]){const c=data.features[0].geometry.coordinates;return{lat:c[1],lon:c[0]}}
+  }catch(e){}
+  return null;
+}
+
+// 高德路線規劃（開車距離+時間）
+let _driving=null;
+async function calculateRoute(from,to){
+  const fromCoord=await geocodeAmap(from);
+  const toCoord=await geocodeAmap(to);
+  if(!fromCoord||!toCoord)return null;
+
+  // 高德駕車路線（JS SDK）
+  try{
+    const AMap=await waitForAmap();
+    if(AMap){
+      if(!_driving)_driving=new AMap.Driving({policy:AMap.DrivingPolicy.LEAST_TIME});
+      return new Promise((resolve)=>{
+        _driving.search(
+          new AMap.LngLat(fromCoord.lon,fromCoord.lat),
+          new AMap.LngLat(toCoord.lon,toCoord.lat),
+          (status,result)=>{
+            if(status==='complete'&&result.routes&&result.routes.length){
+              resolve(result.routes.map(r=>({distance:(r.distance/1000).toFixed(1),duration:Math.round(r.time/60)})));
+            }else{resolve(null)}
+          }
+        );
+      });
+    }
+  }catch(e){}
+
+  // Fallback: OSRM
+  try{
+    const res=await fetch(`https://router.project-osrm.org/route/v1/driving/${fromCoord.lon},${fromCoord.lat};${toCoord.lon},${toCoord.lat}?overview=false&alternatives=true&steps=false`);
+    const data=await res.json();
+    if(data.code==='Ok'&&data.routes?.length){
+      return data.routes.slice(0,3).map(r=>({distance:(r.distance/1000).toFixed(1),duration:Math.round(r.duration/60)}));
+    }
+  }catch(e){}
+  return null;
+}
+
+// 高德地圖連結（取代 Google Maps）
+function amapSearchUrl(address){return`https://uri.amap.com/search?keyword=${encodeURIComponent(address)}`}
+function amapNavUrl(fromAddr,toAddr){return`https://uri.amap.com/search?keyword=${encodeURIComponent(toAddr)}`}
+
+// =========================================================================
+// LINE 分享
+// =========================================================================
+function shareToLINE(text){
+  const isMobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  if(isMobile){window.location.href=`line://msg/text/${encodeURIComponent(text)}`}
+  else{window.open(`https://line.me/R/share?text=${encodeURIComponent(text)}`,'_blank','noopener,noreferrer')}
+}
+async function shareMultipleToLINE(messages,intervalMs=600){
+  if(!messages?.length)return;
+  for(let i=0;i<messages.length;i++){
+    window.open(`https://line.me/R/share?text=${encodeURIComponent(messages[i])}`,'_blank','noopener,noreferrer');
+    if(i<messages.length-1)await new Promise(r=>setTimeout(r,intervalMs));
+  }
+  toast(`已轉發 ${messages.length} 筆`);
+}
+
+// =========================================================================
+// 內建地標資料庫
+// =========================================================================
+const TAIWAN_LANDMARKS=[
+  {keywords:['林森薇閣','薇閣林森'],name:'林森薇閣',address:'104臺北市中山區林森北路419號'},
+  {keywords:['劉媽媽涼麵','劉媽媽'],name:'劉媽媽涼麵（南京東路）',address:'105臺北市松山區南京東路五段123巷29弄5號'},
+  {keywords:['劉媽媽涼麵市民','劉媽媽市民'],name:'劉媽媽涼麵（市民大道）',address:'110臺北市松山區市民大道五段37號'},
+  {keywords:['台北101','臺北101','101大樓'],name:'台北101',address:'110臺北市信義區信義路五段7號'},
+  {keywords:['台北車站','臺北車站','台北火車站'],name:'台北車站',address:'100臺北市中正區忠孝西路一段49號'},
+  {keywords:['桃園機場'],name:'桃園國際機場',address:'337桃園市大園區航站南路9號'},
+  {keywords:['松山機場'],name:'松山機場',address:'105臺北市松山區敦化北路340號'},
+];
+
+function searchLandmarks(query){
+  const lower=query.toLowerCase().trim();if(!lower)return[];
+  return TAIWAN_LANDMARKS.filter(l=>l.keywords.some(kw=>lower.includes(kw.toLowerCase())||kw.toLowerCase().includes(lower)))
+    .map(l=>({label:l.name,formatted:l.address}));
+}
+
+// =========================================================================
+// 地址自動完成元件（高德 POI + 內建地標）
+// =========================================================================
+function createAutocomplete({value,onChange,placeholder}){
+  const wrap=h('div',{class:'autocomplete-wrap'});
+  const input=h('input',{placeholder});
+  input.value=value;
+  const dropdown=h('div',{class:'autocomplete-list hidden'});
+  let isFocused=false,lastQuery='';
+
+  input.addEventListener('input',()=>{
+    onChange(input.value);
+    const q=input.value.trim();
+    if(q.length<2){dropdown.classList.add('hidden');return}
+    if(q===lastQuery)return;
+    lastQuery=q;isFocused=true;
+    clearTimeout(input._timer);
+    input._timer=setTimeout(async()=>{
+      // 1. 內建地標（即時）
+      const landmarks=searchLandmarks(q);
+      // 2. 高德 POI 搜尋
+      const amapResults=await fetchAmapSuggestions(q);
+      // 合併（地標優先）
+      const suggestions=[...landmarks,...amapResults];
+      if(!suggestions.length){dropdown.classList.add('hidden');return}
+      dropdown.innerHTML='';
+      for(const s of suggestions){
+        const item=h('div',{class:'autocomplete-item'},
+          h('div',{style:{fontSize:'13px'}},s.formatted),
+          s.label&&h('div',{class:'autocomplete-item-sub'},s.label)
+        );
+        item.addEventListener('mousedown',(e)=>{
+          e.preventDefault();input.value=s.formatted;onChange(s.formatted);
+          dropdown.classList.add('hidden');isFocused=false;
+        });
+        dropdown.appendChild(item);
+      }
+      dropdown.classList.remove('hidden');
+    },500);
+  });
+  input.addEventListener('focus',()=>{isFocused=true;lastQuery=''});
+  input.addEventListener('blur',()=>{setTimeout(()=>{isFocused=false;dropdown.classList.add('hidden')},200)});
+  wrap.appendChild(input);wrap.appendChild(dropdown);
+  return{wrap,input};
+}
+
+// =========================================================================
+// 狀態管理
+// =========================================================================
+const STORAGE_KEY='dispatch-tool-v3';
+let state={fleets:[
+  {id:'f-nt',name:'NT 車隊',codes:['N','NT'],color:'#10b981',prefix:'',suffix:''},
+  {id:'f-dk',name:'DK 車隊',codes:['D','DK'],color:'#f59e0b',prefix:'',suffix:''},
+  {id:'f-go',name:'Gotaxi',codes:['G','GO'],color:'#eab308',prefix:'',suffix:''},
+],orders:[],settings:{globalPrefix:'',globalSuffix:''}};
+try{const s=localStorage.getItem(STORAGE_KEY);if(s){const p=JSON.parse(s);state={...state,...p,settings:{...state.settings,...(p.settings||{})}}}}catch(e){}
+function saveState(){try{localStorage.setItem(STORAGE_KEY,JSON.stringify(state))}catch(e){}}
+
+let rawText='',parserOverrides={},addOrderPrefill=null;
+let addOrderState={fleetId:'',date:'',time:'',address:'',dropoffAddress:'',notes:'',passengers:'',showRoute:false};
+
+// =========================================================================
+// 渲染
+// =========================================================================
+function rerender(){
+  const app=$('#app');app.innerHTML='';
+  app.appendChild(renderHeader());
+  app.appendChild(h('main',{},
+    renderParser(),
+    renderAddOrder(),
+    renderOrderList()
+  ));
+}
+
+function renderHeader(){
+  return h('header',{class:'header'},
+    h('div',{class:'brand'},
+      h('div',{class:'brand-icon'},'派'),
+      h('div',{},h('div',{style:{fontSize:'16px',fontWeight:600}},'派車小工具'),h('div',{style:{fontSize:'11px',color:'var(--muted)'},'高德地圖 · 地址分解 · 訂單管理'))
+    ),
+    h('button',{class:'btn btn-secondary',onclick:()=>openFleetDialog()},'⚙️ 車隊設定')
+  );
+}
+
+function renderParser(){
+  const parsed={...parseDispatch(rawText),...parserOverrides};
+  // 自動翻譯
+  if(parsed.pickupAddress&&/[a-zA-Z]/.test(parsed.pickupAddress)){
+    clearTimeout(window._tPickup);
+    window._tPickup=setTimeout(async()=>{
+      try{const r=await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(parsed.pickupAddress)}&langpair=en|zh-TW`);const d=await r.json();if(d?.responseData?.translatedText&&!d.responseData.translatedText.includes('WARNING')){parserOverrides={...parserOverrides,pickupAddress:d.responseData.translatedText};updateParserResults()}}catch(e){}
+    },1500);
+  }
+  if(parsed.dropoffAddress&&/[a-zA-Z]/.test(parsed.dropoffAddress)){
+    clearTimeout(window._tDropoff);
+    window._tDropoff=setTimeout(async()=>{
+      try{const r=await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(parsed.dropoffAddress)}&langpair=en|zh-TW`);const d=await r.json();if(d?.responseData?.translatedText&&!d.responseData.translatedText.includes('WARNING')){parserOverrides={...parserOverrides,dropoffAddress:d.responseData.translatedText};updateParserResults()}}catch(e){}
+    },1500);
+  }
+  if(parsed.notes&&/[a-zA-Z]/.test(parsed.notes)){
+    clearTimeout(window._tNotes);
+    window._tNotes=setTimeout(async()=>{
+      try{const r=await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(parsed.notes)}&langpair=en|zh-TW`);const d=await r.json();if(d?.responseData?.translatedText&&!d.responseData.translatedText.includes('WARNING')){parserOverrides={...parserOverrides,notes:d.responseData.translatedText};updateParserResults()}}catch(e){}
+    },1500);
+  }
+
+  return h('section',{class:'card'},
+    h('h2',{},'🔧 地址分解小幫手'),
+    h('textarea',{style:{width:'100%',height:'120px',marginBottom:'12px'},placeholder:'貼上派車單...\n例：\n日期：6/19\n時間：03/26\n上車：民生東路一段25號\n目的地：基隆路一段133號',oninput:(e)=>{rawText=e.target.value;parserOverrides={};updateParserResults()}},rawText),
+    h('div',{id:'parser-results'},renderParserResults(parsed))
+  );
+}
+
+function updateParserResults(){
+  const el=$('#parser-results');if(!el)return;
+  const parsed={...parseDispatch(rawText),...parserOverrides};
+  el.innerHTML='';el.appendChild(renderParserResults(parsed));
+}
+
+function renderParserResults(parsed){
+  const frag=document.createDocumentFragment();
+  frag.appendChild(h('div',{class:'grid-2',style:{marginBottom:'10px'}},
+    h('div',{class:'field'},h('label',{},'📅 日期'),h('input',{value:parsed.date,placeholder:'MM/DD',oninput:(e)=>{parserOverrides={...parserOverrides,date:e.target.value}}})),
+    h('div',{class:'field'},h('label',{},'🕐 時間'),(()=>{const sel=h('select',{});h('option',{value:''},'--');for(let hr=0;hr<24;hr++)for(let m=0;m<60;m+=5){const v=`${String(hr).padStart(2,'0')}:${String(m).padStart(2,'0')}`;const opt=h('option',{value:v,selected:v===parsed.time},v);sel.appendChild(opt)}sel.addEventListener('change',(e)=>{parserOverrides={...parserOverrides,time:e.target.value}});return sel})())
+  ));
+  // 上車地址
+  const ac1=createAutocomplete({value:parsed.pickupAddress,onChange:v=>{parserOverrides={...parserOverrides,pickupAddress:v}},placeholder:'上車地址'});
+  frag.appendChild(h('div',{class:'field',style:{marginTop:'8px'}},h('label',{},'📍 上車地址'),ac1.wrap));
+  // 下車地址
+  const ac2=createAutocomplete({value:parsed.dropoffAddress,onChange:v=>{parserOverrides={...parserOverrides,dropoffAddress:v}},placeholder:'下車地址'});
+  frag.appendChild(h('div',{class:'field'},h('label',{},'🎯 下車地址'),ac2.wrap));
+  frag.appendChild(h('div',{class:'grid-2',style:{marginTop:'8px'}},
+    h('div',{class:'field'},h('label',{},'👥 人數'),h('input',{value:parsed.passengers,placeholder:'人數',oninput:(e)=>{parserOverrides={...parserOverrides,passengers:e.target.value}}})),
+    h('div',{class:'field'},h('label',{},'📞 電話'),h('input',{value:parsed.phone,placeholder:'電話',oninput:(e)=>{parserOverrides={...parserOverrides,phone:e.target.value}}}))
+  ));
+  frag.appendChild(h('div',{class:'field'},h('label',{},'📝 備註'),h('input',{value:parsed.notes,placeholder:'備註',oninput:(e)=>{parserOverrides={...parserOverrides,notes:e.target.value}}})));
+  frag.appendChild(h('div',{class:'btn-row'},
+    h('button',{class:'btn btn-secondary',onclick:()=>{
+      const lines=[parsed.date&&`日期：${parsed.date}`,parsed.time&&`時間：${parsed.time}`,parsed.pickupAddress&&`上車地址：${parsed.pickupAddress}`,parsed.dropoffAddress&&`下車地址：${parsed.dropoffAddress}`,parsed.notes&&`備註：${parsed.notes}`].filter(Boolean);
+      navigator.clipboard.writeText(lines.join('\n'));toast('已複製');
+    }},'📋 複製全部'),
+    h('button',{class:'btn btn-primary',onclick:()=>{
+      if(!parsed.pickupAddress&&!parsed.dropoffAddress){toast('尚無地址',{});return}
+      addOrderPrefill={...parsed};rerender();toast('已帶入新增訂單');
+      setTimeout(()=>{document.getElementById('add-order')?.scrollIntoView({behavior:'smooth'})},100);
+    }},'⬇️ 帶入新增訂單')
+  ));
+  return frag;
+}
+
+function renderAddOrder(){
+  if(addOrderPrefill){
+    addOrderState={fleetId:'',date:addOrderPrefill.date||'',time:addOrderPrefill.time||'',address:addOrderPrefill.pickupAddress||'',dropoffAddress:addOrderPrefill.dropoffAddress||'',notes:addOrderPrefill.notes||'',passengers:addOrderPrefill.passengers||'',showRoute:false};
+    addOrderPrefill=null;
+  }
+  if(!addOrderState.fleetId&&state.fleets.length)addOrderState.fleetId=state.fleets[0].id;
+  const allCodes=new Map();state.fleets.forEach(f=>f.codes.forEach(c=>{if(c&&!allCodes.has(c))allCodes.set(c,f.id)}));
+  let detected=null;
+  if(addOrderState.address.trim()){const r=detectFleetCode(addOrderState.address,[...allCodes.keys()]);if(r)detected={code:r.code,fleetId:allCodes.get(r.code),rest:r.rest}}
+  const fid=detected?detected.fleetId:addOrderState.fleetId;
+  const cleanAddr=(detected?.rest??addOrderState.address).trim();
+
+  return h('section',{id:'add-order',class:'card'},
+    h('h2',{},'➕ 新增訂單'),
+    // 車隊
+    h('div',{class:'field'},h('label',{},'🏷️ 車隊'+(detected?` · 自動偵測 ${detected.code}`:'')),
+      h('div',{style:{display:'flex',gap:'6px',flexWrap:'wrap'}},
+        ...state.fleets.map(f=>h('button',{class:`fleet-chip ${f.id===fid?'active':''}`,onclick:()=>{if(detected&&detected.fleetId!==f.id)addOrderState.address=detected.rest;addOrderState.fleetId=f.id;rerender()}},
+          h('span',{class:'dot',style:{background:f.color}}),h('span',{class:'mono'},f.codes[0]||'?'),f.name))
+      )
+    ),
+    // 日期時間
+    h('div',{class:'grid-2',style:{marginBottom:'10px'}},
+      h('div',{class:'field'},h('label',{},'📅 日期（可打 0619/6/19）'),
+        h('input',{value:addOrderState.date,placeholder:'MM/DD',oninput:(e)=>{
+          addOrderState.date=e.target.value;
+          clearTimeout(e.target._t);e.target._t=setTimeout(()=>{const n=normalizeDate(addOrderState.date);if(n!==addOrderState.date&&/^\d{2}\/\d{2}$/.test(n)){addOrderState.date=n;e.target.value=n}},600)
+        }})),
+      h('div',{class:'field'},h('label',{},'🕐 時間（5 分鐘間隔）'),
+        h('div',{style:{display:'flex',gap:'6px',alignItems:'center'}},
+          (()=>{const sel=h('select',{style:{flex:'1',textAlign:'center'}});h('option',{value:''},'--');for(let i=0;i<24;i++){const v=String(i).padStart(2,'0');const opt=h('option',{value:v,selected:v===(addOrderState.time||'').split(':')[0]},v);sel.appendChild(opt)}sel.addEventListener('change',e=>{addOrderState.time=e.target.value?`${e.target.value}:${(addOrderState.time||'').split(':')[1]||'00'}`:''});return sel})(),
+          h('span',{},':'),
+          (()=>{const sel=h('select',{style:{flex:'1',textAlign:'center'},disabled:!addOrderState.time});h('option',{value:''},'--');for(let i=0;i<12;i++){const v=String(i*5).padStart(2,'0');const opt=h('option',{value:v,selected:v===(addOrderState.time||'').split(':')[1]},v);sel.appendChild(opt)}sel.addEventListener('change',e=>{addOrderState.time=e.target.value?`${(addOrderState.time||'').split(':')[0]||'00'}:${e.target.value}`:''});return sel})()
+        )
+      )
+    ),
+    // 上車地址
+    h('div',{class:'field'},h('label',{},'📍 地址 / 訂單內容'+(detected?h('button',{class:'btn btn-sm btn-amber',style:{marginLeft:'8px'},onclick:()=>{addOrderState.address=detected.rest;rerender()}},'移除代號').outerHTML:'')),
+      (()=>{const ac=createAutocomplete({value:addOrderState.address,onChange:v=>{addOrderState.address=v;updateRouteCheckbox()},placeholder:'可輸入代號開頭（如 N民生東路）'});return ac.wrap})()
+    ),
+    // 下車地址
+    h('div',{class:'field'},h('label',{},'🎯 下車地址（選填）'),
+      (()=>{const ac=createAutocomplete({value:addOrderState.dropoffAddress,onChange:v=>{addOrderState.dropoffAddress=v;updateRouteCheckbox()},placeholder:'下車地址'});return ac.wrap})()
+    ),
+    // 人數 + 備註
+    h('div',{class:'grid-2',style:{marginBottom:'10px'}},
+      h('div',{class:'field'},h('label',{},'👥 人數'),h('input',{type:'number',min:'1',max:'20',value:addOrderState.passengers,placeholder:'1、2、4',oninput:e=>{addOrderState.passengers=e.target.value}})),
+      h('div',{class:'field'},h('label',{},'📝 備註'),h('input',{value:addOrderState.notes,placeholder:'例：可以抽電子煙的車',oninput:e=>{addOrderState.notes=e.target.value}}))
+    ),
+    // 路線里程勾選
+    h('div',{id:'route-checkbox-area',class:'route-checkbox',style:{display:'none'}},
+      h('label',{},
+        h('input',{type:'checkbox',style:{width:'18px',height:'18px'},onchange:e=>{addOrderState.showRoute=e.target.checked}}),
+        '🧭 顯示路線里程/時間（勾選後自動計算）'
+      )
+    ),
+    h('button',{class:'btn btn-primary btn-lg',style:{marginTop:'12px'},onclick:handleSubmit},'➕ 新增訂單')
+  );
+}
+
+function updateRouteCheckbox(){
+  const area=$('#route-checkbox-area');if(!area)return;
+  area.style.display=(addOrderState.address.trim()&&addOrderState.dropoffAddress.trim())?'block':'none';
+}
+
+function handleSubmit(){
+  const allCodes=new Map();state.fleets.forEach(f=>f.codes.forEach(c=>{if(c&&!allCodes.has(c))allCodes.set(c,f.id)}));
+  let det=null;if(addOrderState.address.trim()){const r=detectFleetCode(addOrderState.address,[...allCodes.keys()]);if(r)det={code:r.code,fleetId:allCodes.get(r.code),rest:r.rest}}
+  const fid=det?det.fleetId:addOrderState.fleetId;
+  const addr=(det?.rest??addOrderState.address).trim();
+  if(!fid){toast('請先選擇車隊',{variant:'error'});return}
+  if(!addr){toast('請輸入上車地址',{variant:'error'});return}
+
+  let notes=addOrderState.notes.trim();
+  if(addOrderState.passengers.trim())notes=notes?`${addOrderState.passengers}人 ${notes}`:`${addOrderState.passengers}人`;
+
+  const cb=$('#route-checkbox-area input');
+  if(cb&&cb.checked&&addOrderState.dropoffAddress){
+    (async()=>{
+      toast('計算路線中...');
+      try{
+        const routes=await calculateRoute(addr,addOrderState.dropoffAddress);
+        if(routes?.length){const info=routes.map((r,i)=>`路線${routes.length>1?i+1:''}：${r.distance}km/${r.duration}分`).join(' ');notes=notes?`${notes} ${info}`:info}
+      }catch(e){}
+      doSubmit(fid,addr,notes);
+    })();
+  }else{doSubmit(fid,addr,notes)}
+
+  function doSubmit(fid,addr,notes){
+    state.orders.push({id:uid('o'),fleetId:fid,date:addOrderState.date.trim(),time:addOrderState.time.trim(),pickupAddress:addr,dropoffAddress:addOrderState.dropoffAddress.trim(),notes,passengers:addOrderState.passengers.trim(),routeText:'',routeLoading:false,createdAt:Date.now()});
+    saveState();
+    addOrderState={fleetId:fid,date:'',time:'',address:'',dropoffAddress:'',notes:'',passengers:'',showRoute:false};
+    toast('已新增訂單');rerender();
+  }
+}
+
+function renderOrderList(){
+  const grouped=state.fleets.map(f=>({fleet:f,orders:state.orders.filter(o=>o.fleetId===f.id)})).filter(g=>g.orders.length);
+  const total=state.orders.length;
+
+  function buildAllText(){
+    if(!total)return'';
+    const blocks=[];
+    if(state.settings.globalPrefix){blocks.push(state.settings.globalPrefix);blocks.push('')}
+    let lastFid='';
+    state.orders.forEach((o,idx)=>{
+      const f=state.fleets.find(x=>x.id===o.fleetId);const code=f?.codes[0]||'';
+      if(f?.prefix&&o.fleetId!==lastFid){if(idx>0)blocks.push('');blocks.push(f.prefix);blocks.push('')}
+      const dp=o.date?`${o.date} `:'',tp=o.time?`${o.time} `:'';
+      const lines=[`${code}${dp}${tp}${o.pickupAddress}`];
+      if(o.dropoffAddress)lines.push(`下車：${o.dropoffAddress}`);
+      if(o.notes)lines.push(o.notes);
+      if(o.routeText)lines.push(o.routeText);
+      blocks.push(lines.join('\n'));
+      const next=state.orders[idx+1];
+      if(f?.suffix&&(!next||next.fleetId!==o.fleetId)){blocks.push('');blocks.push(f.suffix)}
+      if(idx<total-1)blocks.push('');
+      lastFid=o.fleetId;
+    });
+    if(state.settings.globalSuffix){blocks.push('');blocks.push(state.settings.globalSuffix)}
+    return blocks.join('\n');
+  }
+
+  function buildFleetText(fid){
+    const f=state.fleets.find(x=>x.id===fid);if(!f)return'';
+    const fo=state.orders.filter(o=>o.fleetId===fid);if(!fo.length)return'';
+    const blocks=[];const code=f.codes[0]||'';
+    if(f.prefix){blocks.push(f.prefix);blocks.push('')}
+    fo.forEach((o,idx)=>{const dp=o.date?`${o.date} `:'',tp=o.time?`${o.time} `:'';const lines=[`${code}${dp}${tp}${o.pickupAddress}`];if(o.dropoffAddress)lines.push(`下車：${o.dropoffAddress}`);if(o.notes)lines.push(o.notes);if(o.routeText)lines.push(o.routeText);blocks.push(lines.join('\n'));if(idx<fo.length-1)blocks.push('')});
+    if(f.suffix){blocks.push('');blocks.push(f.suffix)}
+    return blocks.join('\n');
+  }
+
+  function buildFleetMessages(fid){
+    const f=state.fleets.find(x=>x.id===fid);if(!f)return[];
+    const fo=state.orders.filter(o=>o.fleetId===fid);if(!fo.length)return[];
+    const msgs=[];const code=f.codes[0]||'';
+    if(f.prefix)msgs.push(f.prefix);
+    fo.forEach(o=>{const dp=o.date?`${o.date} `:'',tp=o.time?`${o.time} `:'';const lines=[`${code}${dp}${tp}${o.pickupAddress}`];if(o.dropoffAddress)lines.push(`下車：${o.dropoffAddress}`);if(o.notes)lines.push(o.notes);if(o.routeText)lines.push(o.routeText);msgs.push(lines.join('\n'))});
+    if(f.suffix)msgs.push(f.suffix);
+    return msgs;
+  }
+
+  return h('section',{class:'card'},
+    h('h2',{},`📋 訂單列表 (${total})`),
+    total>0&&h('div',{class:'btn-row'},
+      h('button',{class:'btn btn-primary',onclick:()=>{navigator.clipboard.writeText(buildAllText());toast('已複製全部')}},'📋 複製全部車隊'),
+      h('button',{class:'btn btn-line',onclick:()=>shareToLINE(buildAllText())},'📤 LINE 轉發全部'),
+      h('button',{class:'btn btn-danger',onclick:()=>{if(confirm('確認清空全部？')){state.orders=[];saveState();rerender()}}},'🗑️ 清空')
+    ),
+    total===0?h('div',{class:'empty'},'目前沒有訂單'):
+    h('div',{},
+      ...grouped.map(({fleet,orders})=>
+        h('div',{style:{marginBottom:'16px'}},
+          h('div',{class:'fleet-header'},
+            h('span',{class:'dot',style:{background:fleet.color}}),
+            h('strong',{},fleet.name),
+            h('span',{style:{color:'var(--muted)',fontSize:'12px'}},`${orders.length} 筆`),
+            h('button',{class:'btn btn-sm btn-secondary',onclick:()=>{navigator.clipboard.writeText(buildFleetText(fleet.id));toast('已複製')}},'複製'),
+            h('button',{class:'btn btn-sm',style:{background:'rgba(6,199,85,.15)',color:'#06c755',border:'1px solid rgba(6,199,85,.3)'},onclick:()=>{const m=buildFleetMessages(fleet.id);if(m.length===1)shareToLINE(m[0]);else shareMultipleToLINE(m,600)}},'LINE')
+          ),
+          ...orders.map(o=>renderOrderCard(o,fleet))
+        )
+      )
+    )
+  );
+}
+
+function renderOrderCard(order,fleet){
+  return h('div',{class:'order-card'},
+    h('div',{class:'order-bar',style:{background:fleet.color}}),
+    h('div',{class:'order-body'},
+      h('div',{class:'order-meta'},
+        order.date&&h('span',{class:'tag'},`📅 ${order.date}`),
+        order.time&&h('span',{class:'tag tag-primary'},`🕐 ${order.time}`),
+        h('span',{class:'tag'},fleet.name),
+        h('button',{class:'btn btn-sm btn-secondary',onclick:()=>{
+          const parts=[order.pickupAddress];
+          if(order.dropoffAddress)parts.push(`下車：${order.dropoffAddress}`);
+          if(order.notes)parts.push(order.notes);
+          if(order.routeText)parts.push(order.routeText);
+          navigator.clipboard.writeText(parts.join('\n'));toast('已複製')
+        }},'複製'),
+        h('button',{class:'btn btn-sm btn-danger',onclick:()=>{state.orders=state.orders.filter(o=>o.id!==order.id);saveState();rerender()}},'刪除')
+      ),
+      h('div',{class:'order-line'},
+        h('span',{},'📍'),
+        h('span',{class:'order-text'},(order.time?order.time+' ':'')+order.pickupAddress),
+        h('a',{href:amapSearchUrl(order.pickupAddress),target:'_blank',class:'btn btn-sm btn-secondary'},'🔗')
+      ),
+      order.dropoffAddress&&h('div',{class:'order-line'},
+        h('span',{},'🎯'),
+        h('span',{class:'order-text',style:{color:'var(--muted)'}},order.dropoffAddress),
+        h('a',{href:amapSearchUrl(order.dropoffAddress),target:'_blank',class:'btn btn-sm btn-secondary'},'🔗')
+      ),
+      // 路線里程
+      order.pickupAddress&&order.dropoffAddress&&h('div',{style:{marginTop:'8px'}},
+        order.routeText?h('div',{class:'route-result'},order.routeText):
+        h('button',{class:'btn btn-sm btn-amber',id:`route-${order.id}`,onclick:async()=>{
+          const btn=$(`#route-${order.id}`);if(btn){btn.disabled=true;btn.innerHTML='<span class="spinner"></span> 計算中...'}
+          const routes=await calculateRoute(order.pickupAddress,order.dropoffAddress);
+          if(routes?.length){order.routeText=routes.map((r,i)=>`路線${routes.length>1?i+1:''}：${r.distance}km/${r.duration}分`).join('　');rerender()}
+          else{toast('無法計算路線',{variant:'error'});if(btn){btn.disabled=false;btn.innerHTML='🧭 路線里程'}}
+        }},'🧭 路線里程')
+      ),
+      order.notes&&h('div',{style:{marginTop:'6px',padding:'4px 8px',background:'rgba(245,158,11,.05)',border:'1px solid rgba(245,158,11,.15)',borderRadius:'4px',fontSize:'12px',color:'rgba(252,211,77,.85)'}},`📝 ${order.notes}`)
+    )
+  );
+}
+
+// =========================================================================
+// 車隊設定
+// =========================================================================
+function openFleetDialog(){
+  const existing=$('#fleet-dialog');if(existing)existing.remove();
+  const overlay=h('div',{id:'fleet-dialog',class:'dialog-overlay',style:{position:'fixed',inset:'0',background:'rgba(0,0,0,.6)',zIndex:'50',display:'flex',justifyContent:'center',alignItems:'flex-start',padding:'20px',overflowY:'auto'}});
+  const dialog=h('div',{style:{background:'var(--bg-card)',border:'1px solid var(--border)',borderRadius:'12px',width:'100%',maxWidth:'600px',padding:'20px'}});
+
+  dialog.appendChild(h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'16px'}},
+    h('h3',{style:{margin:'0',fontSize:'18px'}},'⚙️ 車隊代號 / 前後綴設定'),
+    h('button',{class:'btn btn-secondary btn-sm',onclick:()=>overlay.remove()},'✕')
+  ));
+
+  // 全域前後綴
+  dialog.appendChild(h('div',{style:{background:'var(--bg-input)',borderRadius:'8px',padding:'12px',marginBottom:'12px'}},
+    h('p',{style:{fontSize:'12px',fontWeight:'600',margin:'0 0 8px'}},'全域前後綴'),
+    h('div',{class:'grid-2'},
+      h('div',{},h('label',{style:{fontSize:'11px',color:'var(--muted)'}},'前綴'),h('textarea',{style:{minHeight:'40px'},placeholder:'派車單如下',oninput:e=>{state.settings.globalPrefix=e.target.value;saveState()}},state.settings.globalPrefix)),
+      h('div',{},h('label',{style:{fontSize:'11px',color:'var(--muted)'}},'後綴'),h('textarea',{style:{minHeight:'40px'},placeholder:'以上請儘速派車',oninput:e=>{state.settings.globalSuffix=e.target.value;saveState()}},state.settings.globalSuffix))
+    )
+  ));
+
+  // 新增車隊按鈕
+  dialog.appendChild(h('button',{class:'btn btn-primary btn-sm',style:{marginBottom:'12px'},onclick:()=>{
+    state.fleets.push({id:uid('f'),name:'新車隊',codes:[],color:['#10b981','#06b6d4','#3b82f6','#8b5cf6','#ec4899','#ef4444','#f59e0b'][state.fleets.length%7],prefix:'',suffix:''});
+    saveState();overlay.remove();openFleetDialog();
+  }},'+ 新增車隊'));
+
+  // 車隊列表
+  const colors=['#10b981','#06b6d4','#3b82f6','#8b5cf6','#ec4899','#ef4444','#f59e0b','#eab308','#84cc16','#64748b'];
+  for(const f of state.fleets){
+    const row=h('div',{style:{background:'var(--bg-input)',borderRadius:'8px',padding:'12px',marginBottom:'8px'}},
+      h('div',{style:{display:'flex',alignItems:'center',gap:'8px',marginBottom:'8px'}},
+        h('span',{class:'dot',style:{background:f.color,width:'12px',height:'12px'}}),
+        h('input',{value:f.name,style:{flex:'1',fontWeight:'500'},oninput:e=>{f.name=e.target.value;saveState()}}),
+        ...colors.map(c=>h('button',{style:{background:c,width:'16px',height:'16px',borderRadius:'50%',border:f.color===c?'2px solid var(--fg)':'2px solid transparent',cursor:'pointer'},onclick:()=>{f.color=c;saveState();overlay.remove();openFleetDialog()}})),
+        h('button',{class:'btn btn-sm btn-danger',onclick:()=>{if(confirm(`刪除「${f.name}」？`)){state.fleets=state.fleets.filter(x=>x.id!==f.id);state.orders=state.orders.filter(o=>o.fleetId!==f.id);saveState();overlay.remove();openFleetDialog()}}},'刪除')
+      ),
+      h('div',{style:{marginBottom:'8px'}},h('label',{style:{fontSize:'11px',color:'var(--muted)'}},'代號（空白分隔）'),h('input',{class:'mono',value:f.codes.join(' '),placeholder:'N NT',oninput:e=>{f.codes=e.target.value.split(/[\s,，、]+/).filter(Boolean);saveState()}})),
+      h('div',{class:'grid-2'},
+        h('div',{},h('label',{style:{fontSize:'11px',color:'var(--muted)'}},'前綴'),h('textarea',{style:{minHeight:'30px'},placeholder:'（選填）',oninput:e=>{f.prefix=e.target.value;saveState()}},f.prefix)),
+        h('div',{},h('label',{style:{fontSize:'11px',color:'var(--muted)'}},'後綴'),h('textarea',{style:{minHeight:'30px'},placeholder:'（選填）',oninput:e=>{f.suffix=e.target.value;saveState()}},f.suffix))
+      )
+    );
+    dialog.appendChild(row);
+  }
+
+  overlay.appendChild(dialog);
+  overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.remove()});
+  document.body.appendChild(overlay);
+}
+
+// 啟動
+rerender();
+</script>
+</body>
+</html>
