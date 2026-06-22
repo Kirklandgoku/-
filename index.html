@@ -427,7 +427,7 @@ function renderHeader(){
   return h('header',{class:'header'},
     h('div',{class:'brand'},
       h('div',{class:'brand-icon'},'派'),
-      h('div',{},h('div',{style:{fontSize:'16px',fontWeight:600}},'派車小工具'),h('div',{style:{fontSize:'11px',color:'var(--muted)'},'高德地圖 · 地址分解 · 訂單管理'))
+      h('div',{},h('div',{style:{fontSize:'16px',fontWeight:600}},'派車小工具'),h('div',{style:{fontSize:'11px',color:'var(--muted)'}},'高德地圖 · 地址分解 · 訂單管理'))
     ),
     h('button',{class:'btn btn-secondary',onclick:()=>openFleetDialog()},'⚙️ 車隊設定')
   );
